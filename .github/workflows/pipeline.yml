@@ -1,0 +1,117 @@
+name: Tourism Project Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  Data-Registration:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install huggingface_hub
+
+    - name: Execute Data Registration
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python model_building/data_register.py
+
+  Data-Preparation:
+    needs: Data-Registration
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas scikit-learn datasets huggingface_hub
+
+    - name: Execute Data Prep
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python model_building/prep.py
+
+  Model-Training:
+    needs: Data-Preparation
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas scikit-learn joblib mlflow datasets huggingface_hub
+
+    - name: Execute Model Training
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python model_building/train.py
+
+  App-Deployment:
+    needs: Model-Training
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install huggingface_hub
+
+    - name: Deploy to Hugging Face Spaces
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -c "
+        import os
+        from huggingface_hub import HfApi, create_repo
+
+        repo_id = 'gowdhamankarthikeyan/wellness-tourism-app'
+        api = HfApi(token=os.environ['HF_TOKEN'])
+
+        print('Checking/Creating Hugging Face Space...')
+        try:
+            create_repo(repo_id=repo_id, repo_type='space', space_sdk='docker', exist_ok=True)
+        except Exception as e:
+            pass
+
+        print('Uploading deployment files...')
+        api.upload_folder(
+            folder_path='deployment',
+            repo_id=repo_id,
+            repo_type='space'
+        )
+        print('Deployment pushed successfully!')
+        "
